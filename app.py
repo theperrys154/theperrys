@@ -13,15 +13,15 @@ def extract_video_id(url):
     match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
     return match.group(1) if match else None
 
-def get_transcript(video_id):
+def get_transcript_old(video_id):
     try:
-        # ניסיון בעברית
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['he'])
+        transcripts, _ = YouTubeTranscriptApi.get_transcripts([video_id], languages=['he'])
+        transcript = transcripts[video_id]
         return " ".join([t['text'] for t in transcript])
     except:
         try:
-            # אם אין בעברית, ננסה באנגלית
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            transcripts, _ = YouTubeTranscriptApi.get_transcripts([video_id], languages=['en'])
+            transcript = transcripts[video_id]
             return " ".join([t['text'] for t in transcript])
         except Exception as e:
             raise Exception(f"לא נמצאו כתוביות בעברית או באנגלית: {e}")
@@ -40,7 +40,7 @@ if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
         with st.spinner("📄 מוריד כתוביות..."):
-            transcript_text = get_transcript(video_id)
+            transcript_text = get_transcript_old(video_id)
 
         with st.spinner("📝 מסכם לעברית..."):
             summary = summarize_in_hebrew(transcript_text)
