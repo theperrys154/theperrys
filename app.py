@@ -1,49 +1,73 @@
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
-from urllib.parse import urlparse, parse_qs
 import openai
+import re
 
-# Load API key
+# Set your API key
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-st.title("🎥 YouTube Video Summarizer")
-st.write("Paste a YouTube link below and get an easy-to-read summary.")
+st.title("🎥 YouTube Video Summarizer (Hebrew & English)")
 
-# Step 1: Get YouTube URL
-youtube_url = st.text_input("Enter YouTube Video URL:")
+# Step 1: Get YouTube link from user
+youtube_url = st.text_input("Paste a YouTube link:")
 
-def get_video_id(url):
-    parsed_url = urlparse(url)
-    if parsed_url.hostname == 'youtu.be':
-        return parsed_url.path[1:]
-    elif parsed_url.hostname in ('www.youtube.com', 'youtube.com'):
-        return parse_qs(parsed_url.query).get('v', [None])[0]
-    return None
+def extract_video_id(url):
+    match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
+    return match.group(1) if match else None
+
+def get_transcript(video_id):
+    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+
+    # Try Hebrew first
+    try:
+        transcript = transcript_list.find_manually_created_transcript(['he'])
+    except:
+        try:
+            transcript = transcript_list.find_generated_transcript(['he'])
+        except:
+            transcript = None
+
+    # If no Hebrew, try English
+    if transcript is None:
+        try:
+            transcript = transcript_list.find_manually_created_transcript(['en'])
+        except:
+            try:
+                transcript = transcript_list.find_generated_transcript(['en'])
+            except:
+                transcript = None
+
+    if transcript is None:
+        raise Exception("No subtitles available in Hebrew or English.")
+
+    transcript_data = transcript.fetch()
+    return " ".join([t['text'] for t in transcript_data]), transcript.language_code
+
+def summarize_text(text, language):
+    if language == "he":
+        prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
+    else:
+        prompt = f"Summarize the following text in simple and clear English:\n\n{text}"
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.5,
+        max_tokens=500
+    )
+    return response.choices[0].message["content"]
 
 if youtube_url:
-    video_id = get_video_id(youtube_url)
-    if video_id:
-        try:
-            # Step 2: Get transcript
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-            transcript_text = " ".join([t['text'] for t in transcript_list])
+    try:
+        video_id = extract_video_id(youtube_url)
+        with st.spinner("Fetching transcript..."):
+            transcript_text, lang = get_transcript(video_id)
 
-            # Step 3: Summarize with GPT
-            with st.spinner("Summarizing video..."):
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant that summarizes YouTube videos into clear, simple explanations."},
-                        {"role": "user", "content": f"Summarize this transcript into an easy and comfortable text:\n\n{transcript_text}"}
-                    ],
-                    max_tokens=500
-                )
-                summary = response.choices[0].message.content
+        with st.spinner("Summarizing..."):
+            summary = summarize_text(transcript_text, lang)
 
-            st.subheader("📝 Summary")
-            st.write(summary)
+        st.subheader("📄 Summary:")
+        st.write(summary)
 
-        except Exception as e:
-            st.error(f"Error: {e}\nThe video might not have subtitles.")
-    else:
-        st.error("Invalid YouTube URL. Please check and try again.")
+    except Exception as e:
+        st.error(f"Error: {e}")
