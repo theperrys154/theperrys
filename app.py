@@ -13,14 +13,18 @@ def extract_video_id(url):
     match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
     return match.group(1) if match else None
 
-def get_any_transcript(video_id):
+def get_transcript(video_id):
     try:
-        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
-        first_transcript = transcripts.find_transcript(transcripts._manually_created_transcripts.keys() or transcripts._generated_transcripts.keys())
-        transcript = first_transcript.fetch()
+        # ניסיון בעברית
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['he'])
         return " ".join([t['text'] for t in transcript])
-    except Exception as e:
-        raise Exception(f"לא הצלחתי להביא כתוביות: {e}")
+    except:
+        try:
+            # אם אין בעברית, ננסה באנגלית
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            return " ".join([t['text'] for t in transcript])
+        except Exception as e:
+            raise Exception(f"לא נמצאו כתוביות בעברית או באנגלית: {e}")
 
 def summarize_in_hebrew(text):
     prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
@@ -36,9 +40,9 @@ if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
         with st.spinner("📄 מוריד כתוביות..."):
-            transcript_text = get_any_transcript(video_id)
+            transcript_text = get_transcript(video_id)
 
-        with st.spinner("📝 מתרגם ומסכם לעברית..."):
+        with st.spinner("📝 מסכם לעברית..."):
             summary = summarize_in_hebrew(transcript_text)
 
         st.subheader("הסיכום:")
