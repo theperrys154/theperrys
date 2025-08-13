@@ -3,12 +3,10 @@ from youtube_transcript_api import YouTubeTranscriptApi
 import openai
 import re
 
-# Set your API key
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 st.title("🎥 YouTube Video Summarizer (Hebrew & English)")
 
-# Step 1: Get YouTube link from user
 youtube_url = st.text_input("Paste a YouTube link:")
 
 def extract_video_id(url):
@@ -16,32 +14,21 @@ def extract_video_id(url):
     return match.group(1) if match else None
 
 def get_transcript(video_id):
-    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-
     # Try Hebrew first
     try:
-        transcript = transcript_list.find_manually_created_transcript(['he'])
+        transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['he'])
+        return " ".join([t['text'] for t in transcript_data]), "he"
     except:
-        try:
-            transcript = transcript_list.find_generated_transcript(['he'])
-        except:
-            transcript = None
+        pass
 
-    # If no Hebrew, try English
-    if transcript is None:
-        try:
-            transcript = transcript_list.find_manually_created_transcript(['en'])
-        except:
-            try:
-                transcript = transcript_list.find_generated_transcript(['en'])
-            except:
-                transcript = None
+    # Then try English
+    try:
+        transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+        return " ".join([t['text'] for t in transcript_data]), "en"
+    except:
+        pass
 
-    if transcript is None:
-        raise Exception("No subtitles available in Hebrew or English.")
-
-    transcript_data = transcript.fetch()
-    return " ".join([t['text'] for t in transcript_data]), transcript.language_code
+    raise Exception("No subtitles found in Hebrew or English.")
 
 def summarize_text(text, language):
     if language == "he":
@@ -60,13 +47,13 @@ def summarize_text(text, language):
 if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
-        with st.spinner("Fetching transcript..."):
+        with st.spinner("📄 Fetching transcript..."):
             transcript_text, lang = get_transcript(video_id)
 
-        with st.spinner("Summarizing..."):
+        with st.spinner("📝 Summarizing..."):
             summary = summarize_text(transcript_text, lang)
 
-        st.subheader("📄 Summary:")
+        st.subheader("Summary:")
         st.write(summary)
 
     except Exception as e:
