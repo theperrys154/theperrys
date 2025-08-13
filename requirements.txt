@@ -1,4 +1,5 @@
 streamlit
 openai
 youtube-transcript-api>=0.6.2
-pip install --upgrade youtube-transcript-api
+youtube-transcript-api
+streamlit
