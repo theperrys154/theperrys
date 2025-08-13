@@ -5,7 +5,7 @@ import re
 
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-st.title("🎥 YouTube Video Summarizer (Hebrew & English)")
+st.title("🎥 YouTube Video Summarizer (Hebrew Preferred)")
 
 youtube_url = st.text_input("Paste a YouTube link:")
 
@@ -13,29 +13,30 @@ def extract_video_id(url):
     match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
     return match.group(1) if match else None
 
-def get_transcript(video_id):
-    # Try Hebrew first
+def get_best_transcript(video_id):
     try:
-        transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['he'])
-        return " ".join([t['text'] for t in transcript_data]), "he"
-    except:
-        pass
+        # This returns a list of available transcripts with language codes
+        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+        
+        # Try Hebrew first
+        for transcript in transcripts:
+            if 'he' in transcript.language_code or 'iw' in transcript.language_code:
+                return " ".join([t['text'] for t in transcript.fetch()]), "he"
 
-    # Then try English
-    try:
-        transcript_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-        return " ".join([t['text'] for t in transcript_data]), "en"
-    except:
-        pass
+        # Try English
+        for transcript in transcripts:
+            if transcript.language_code.startswith('en'):
+                return " ".join([t['text'] for t in transcript.fetch()]), "en"
 
-    raise Exception("No subtitles found in Hebrew or English.")
+        # If nothing matches, just take the first one
+        first = transcripts.find_transcript([t.language_code for t in transcripts])
+        return " ".join([t['text'] for t in first.fetch()]), first.language_code
+
+    except Exception as e:
+        raise Exception(f"Transcript error: {e}")
 
 def summarize_text(text, language):
-    if language == "he":
-        prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
-    else:
-        prompt = f"Summarize the following text in simple and clear English:\n\n{text}"
-
+    prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[{"role": "user", "content": prompt}],
@@ -48,12 +49,12 @@ if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
         with st.spinner("📄 Fetching transcript..."):
-            transcript_text, lang = get_transcript(video_id)
+            transcript_text, lang = get_best_transcript(video_id)
 
         with st.spinner("📝 Summarizing..."):
             summary = summarize_text(transcript_text, lang)
 
-        st.subheader("Summary:")
+        st.subheader("סיכום:")
         st.write(summary)
 
     except Exception as e:
