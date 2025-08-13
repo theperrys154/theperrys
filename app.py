@@ -13,29 +13,20 @@ def extract_video_id(url):
     match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
     return match.group(1) if match else None
 
-def get_best_transcript(video_id):
+def get_transcript(video_id):
     try:
-        # This returns a list of available transcripts with language codes
-        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
-        
         # Try Hebrew first
-        for transcript in transcripts:
-            if 'he' in transcript.language_code or 'iw' in transcript.language_code:
-                return " ".join([t['text'] for t in transcript.fetch()]), "he"
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['he', 'iw'])
+        return " ".join([t['text'] for t in transcript]), "he"
+    except:
+        try:
+            # Try English if Hebrew fails
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
+            return " ".join([t['text'] for t in transcript]), "en"
+        except Exception as e:
+            raise Exception("No subtitles found in Hebrew or English.")
 
-        # Try English
-        for transcript in transcripts:
-            if transcript.language_code.startswith('en'):
-                return " ".join([t['text'] for t in transcript.fetch()]), "en"
-
-        # If nothing matches, just take the first one
-        first = transcripts.find_transcript([t.language_code for t in transcripts])
-        return " ".join([t['text'] for t in first.fetch()]), first.language_code
-
-    except Exception as e:
-        raise Exception(f"Transcript error: {e}")
-
-def summarize_text(text, language):
+def summarize_text(text):
     prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
@@ -49,10 +40,10 @@ if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
         with st.spinner("📄 Fetching transcript..."):
-            transcript_text, lang = get_best_transcript(video_id)
+            transcript_text, lang = get_transcript(video_id)
 
         with st.spinner("📝 Summarizing..."):
-            summary = summarize_text(transcript_text, lang)
+            summary = summarize_text(transcript_text)
 
         st.subheader("סיכום:")
         st.write(summary)
