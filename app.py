@@ -3,10 +3,9 @@ from youtube_transcript_api import YouTubeTranscriptApi
 import openai
 import re
 
-# OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-st.title("🎥 יוטיוב מסכם בעברית")
+st.title("🎥 מסכם סרטוני יוטיוב בעברית")
 
 youtube_url = st.text_input("הדבק כאן את קישור היוטיוב:")
 
@@ -14,12 +13,14 @@ def extract_video_id(url):
     match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
     return match.group(1) if match else None
 
-def get_hebrew_transcript(video_id):
+def get_any_transcript(video_id):
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['he', 'iw'])
+        transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+        first_transcript = transcripts.find_transcript(transcripts._manually_created_transcripts.keys() or transcripts._generated_transcripts.keys())
+        transcript = first_transcript.fetch()
         return " ".join([t['text'] for t in transcript])
-    except:
-        raise Exception("לא נמצאו כתוביות בעברית.")
+    except Exception as e:
+        raise Exception(f"לא הצלחתי להביא כתוביות: {e}")
 
 def summarize_in_hebrew(text):
     prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
@@ -34,10 +35,10 @@ def summarize_in_hebrew(text):
 if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
-        with st.spinner("📄 מוריד כתוביות בעברית..."):
-            transcript_text = get_hebrew_transcript(video_id)
+        with st.spinner("📄 מוריד כתוביות..."):
+            transcript_text = get_any_transcript(video_id)
 
-        with st.spinner("📝 מסכם..."):
+        with st.spinner("📝 מתרגם ומסכם לעברית..."):
             summary = summarize_in_hebrew(transcript_text)
 
         st.subheader("הסיכום:")
