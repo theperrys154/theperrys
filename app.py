@@ -1,56 +1,74 @@
+import streamlit as st
+import openai
+import tempfile
 import os
 import json
-import tempfile
 from pytube import YouTube
 import whisper
-from openai import OpenAI
 
-# Load config
-CONFIG_FILE = "config.json"
-if not os.path.exists(CONFIG_FILE):
-    raise FileNotFoundError(f"{CONFIG_FILE} not found. Create it with your API key and preferences.")
+# ==============================
+# CONFIGURATION
+# ==============================
+# Get secrets from Streamlit Cloud settings (safe way)
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+MODEL_SUMMARY = st.secrets.get("MODEL_SUMMARY", "gpt-4o-mini")
+WHISPER_MODEL = st.secrets.get("WHISPER_MODEL", "base")
 
-with open(CONFIG_FILE, "r") as f:
-    config = json.load(f)
+# Set the API key
+openai.api_key = OPENAI_API_KEY
 
-OPENAI_API_KEY = config.get("OPENAI_API_KEY")
-MODEL_SUMMARY = config.get("MODEL_SUMMARY", "gpt-4o-mini")
-WHISPER_MODEL = config.get("WHISPER_MODEL", "base")
+# ==============================
+# FUNCTIONS
+# ==============================
+def download_audio_from_youtube(url):
+    """Download audio from YouTube and return file path."""
+    yt = YouTube(url)
+    audio_stream = yt.streams.filter(only_audio=True).first()
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+    audio_stream.download(filename=temp_file.name)
+    return temp_file.name
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-def download_audio(youtube_url):
-    yt = YouTube(youtube_url)
-    print(f"Downloading: {yt.title}")
-    stream = yt.streams.filter(only_audio=True).first()
-    temp_dir = tempfile.gettempdir()
-    audio_path = stream.download(output_path=temp_dir, filename="video_audio.mp4")
-    return audio_path
-
-def transcribe_audio(audio_path):
-    print("Transcribing audio...")
+def transcribe_audio(file_path):
+    """Transcribe audio using Whisper."""
     model = whisper.load_model(WHISPER_MODEL)
-    result = model.transcribe(audio_path)
+    result = model.transcribe(file_path)
     return result["text"]
 
 def summarize_text(text):
-    print("Summarizing transcript...")
-    prompt = f"Summarize this transcript into a clear, concise, and easy-to-read summary:\n\n{text}"
-    response = client.chat.completions.create(
+    """Summarize text using OpenAI."""
+    prompt = f"Summarize the following text in a clear and concise way:\n\n{text}"
+    response = openai.ChatCompletion.create(
         model=MODEL_SUMMARY,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5
     )
-    return response.choices[0].message.content.strip()
+    return response.choices[0].message["content"]
 
-def summarize_youtube_video(youtube_url):
-    audio_path = download_audio(youtube_url)
-    transcript = transcribe_audio(audio_path)
-    summary = summarize_text(transcript)
-    return summary
+# ==============================
+# STREAMLIT UI
+# ==============================
+st.set_page_config(page_title="YouTube Video Summarizer", page_icon="🎥")
+st.title("🎥 YouTube Video Summarizer")
 
-if __name__ == "__main__":
-    url = input("Enter YouTube URL: ").strip()
-    result = summarize_youtube_video(url)
-    print("\n--- SUMMARY ---\n")
-    print(result)
+# Input for YouTube URL
+youtube_url = st.text_input("Enter YouTube video URL:")
+
+if youtube_url:
+    with st.spinner("Downloading audio..."):
+        audio_path = download_audio_from_youtube(youtube_url)
+
+    with st.spinner("Transcribing audio..."):
+        transcription = transcribe_audio(audio_path)
+
+    with st.spinner("Summarizing transcription..."):
+        summary = summarize_text(transcription)
+
+    st.subheader("📄 Summary")
+    st.write(summary)
+
+    st.subheader("📝 Full Transcription")
+    with st.expander("Show Transcription"):
+        st.write(transcription)
+
+    # Cleanup temporary file
+    os.remove(audio_path)
