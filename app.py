@@ -3,30 +3,25 @@ from youtube_transcript_api import YouTubeTranscriptApi
 import openai
 import re
 
+# OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-st.title("🎥 YouTube Video Summarizer (Hebrew Preferred)")
+st.title("🎥 יוטיוב מסכם בעברית")
 
-youtube_url = st.text_input("Paste a YouTube link:")
+youtube_url = st.text_input("הדבק כאן את קישור היוטיוב:")
 
 def extract_video_id(url):
     match = re.search(r"(?:v=|youtu\.be/)([^&]+)", url)
     return match.group(1) if match else None
 
-def get_transcript(video_id):
+def get_hebrew_transcript(video_id):
     try:
-        # Try Hebrew first
         transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['he', 'iw'])
-        return " ".join([t['text'] for t in transcript]), "he"
+        return " ".join([t['text'] for t in transcript])
     except:
-        try:
-            # Try English if Hebrew fails
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-            return " ".join([t['text'] for t in transcript]), "en"
-        except Exception as e:
-            raise Exception("No subtitles found in Hebrew or English.")
+        raise Exception("לא נמצאו כתוביות בעברית.")
 
-def summarize_text(text):
+def summarize_in_hebrew(text):
     prompt = f"סכם את הטקסט הבא בצורה פשוטה וברורה בעברית:\n\n{text}"
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
@@ -39,14 +34,14 @@ def summarize_text(text):
 if youtube_url:
     try:
         video_id = extract_video_id(youtube_url)
-        with st.spinner("📄 Fetching transcript..."):
-            transcript_text, lang = get_transcript(video_id)
+        with st.spinner("📄 מוריד כתוביות בעברית..."):
+            transcript_text = get_hebrew_transcript(video_id)
 
-        with st.spinner("📝 Summarizing..."):
-            summary = summarize_text(transcript_text)
+        with st.spinner("📝 מסכם..."):
+            summary = summarize_in_hebrew(transcript_text)
 
-        st.subheader("סיכום:")
+        st.subheader("הסיכום:")
         st.write(summary)
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"שגיאה: {e}")
